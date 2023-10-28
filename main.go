@@ -9,7 +9,6 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
@@ -27,22 +26,29 @@ var (
 	whiteSubImage = whiteImage.SubImage(image.Rect(1, 1, 2, 2)).(*ebiten.Image)
 )
 
-func Lerp(start, end, t float32) float32 {
-	return start + t*(end-start)
+type Vector2 struct {
+	X float32
+	Y float32
 }
 
-type Snake struct {
-	X, Y, Next_X, Next_Y, Speed_X, Speed_Y, Scale float32
+type SnakePart struct {
+	Position     Vector2
+	NextPosition Vector2
+	Direction    Vector2
+	Scale        float32
 }
 
 type Fruit struct {
-	X, Y, Scale float32
+	Position Vector2
+	Scale    float32
 }
 
 type Game struct {
-	FramesCouter int32
-	Snake        []Snake
-	Fruit        Fruit
+	FramesCouter   int32
+	Snake          []SnakePart
+	Fruit          Fruit
+	Input          *Input
+	MovementBuffer []Vector2
 }
 
 func NewGame() ebiten.Game {
@@ -51,57 +57,76 @@ func NewGame() ebiten.Game {
 
 	return g
 }
+func NewVector2(x, y float32) Vector2 {
+	return Vector2{x, y}
+}
 
 func (g *Game) Init() {
 	g.FramesCouter = 0
-	g.Snake = []Snake{{X: 128 + 16, Y: 128, Next_X: 128 + 16, Next_Y: 128 + 16, Scale: 16},
-		{X: 128 - 16, Y: 128 + 16, Next_X: 0, Next_Y: 0, Scale: 16},
-		{X: 128 - 48, Y: 128 + 16, Next_X: 128, Next_Y: 128, Scale: 16},
-		{X: 128 - 48, Y: 128 + 16, Next_X: 128, Next_Y: 128, Scale: 16}}
-	g.Fruit = Fruit{X: 256, Y: 256, Scale: TileSize}
+
+	g.Snake = []SnakePart{{Position: NewVector2(16, 16), NextPosition: NewVector2(32-16, 32-16), Direction: NewVector2(0, 0), Scale: TileSize / 2},
+		{Position: NewVector2(16, 16), NextPosition: NewVector2(16, 16), Direction: NewVector2(0, 0), Scale: TileSize / 2},
+		{Position: NewVector2(16, 16), NextPosition: NewVector2(16, 16), Direction: NewVector2(0, 0), Scale: TileSize / 2},
+		{Position: NewVector2(16, 16), NextPosition: NewVector2(16, 16), Direction: NewVector2(0, 0), Scale: TileSize / 2},
+	}
+	g.Fruit = Fruit{Position: NewVector2(256, 256), Scale: TileSize}
 }
 
 func (g *Game) MoveSnake() {
 	for i := len(g.Snake) - 1; i > 0; i-- {
-		g.Snake[i].Next_X = g.Snake[i-1].Next_X
-		g.Snake[i].Next_Y = g.Snake[i-1].Next_Y
+		g.Snake[i].NextPosition = g.Snake[i-1].NextPosition
 	}
 }
 
+func Lerp(start, end, t float32) float32 {
+	return start + t*(end-start)
+}
+
 func (g *Game) Update() error {
-
-	if inpututil.IsKeyJustPressed(ebiten.KeyRight) {
-		g.Snake[0].Speed_Y = 0
-		g.Snake[0].Speed_X = 32
-	} else if inpututil.IsKeyJustPressed(ebiten.KeyLeft) {
-		g.Snake[0].Speed_Y = 0
-		g.Snake[0].Speed_X = -32
+	if g.Input.MoveRight() {
+		g.Snake[0].Direction = NewVector2(TileSize, 0)
+		g.MovementBuffer = append(g.MovementBuffer, g.Snake[0].Direction)
+	} else if g.Input.MoveLeft() {
+		g.Snake[0].Direction = NewVector2(-TileSize, 0)
+		g.MovementBuffer = append(g.MovementBuffer, g.Snake[0].Direction)
 	}
 
-	if inpututil.IsKeyJustPressed(ebiten.KeyDown) {
-		g.Snake[0].Speed_X = 0
-		g.Snake[0].Speed_Y = 32
-	} else if inpututil.IsKeyJustPressed(ebiten.KeyUp) {
-		g.Snake[0].Speed_X = 0
-		g.Snake[0].Speed_Y = -32
+	if g.Input.MoveDown() {
+		g.Snake[0].Direction = NewVector2(0, TileSize)
+		g.MovementBuffer = append(g.MovementBuffer, g.Snake[0].Direction)
+	} else if g.Input.MoveUp() {
+		g.Snake[0].Direction = NewVector2(0, -TileSize)
+		g.MovementBuffer = append(g.MovementBuffer, g.Snake[0].Direction)
 	}
 
-	if g.FramesCouter%9 == 0 {
+	if g.FramesCouter%8 == 0 {
 		g.MoveSnake()
-		g.Snake[0].Next_X += g.Snake[0].Speed_X
-		g.Snake[0].Next_Y += g.Snake[0].Speed_Y
+		if len(g.MovementBuffer) > 0 {
+			if len(g.MovementBuffer) > 1 {
+				g.MovementBuffer = g.MovementBuffer[1:]
+			}
+			if len(g.MovementBuffer) > 4 {
+				g.MovementBuffer = g.MovementBuffer[1:4]
+			}
+			g.Snake[0].NextPosition.X += g.MovementBuffer[0].X
+			g.Snake[0].NextPosition.Y += g.MovementBuffer[0].Y
+		}
 		g.FramesCouter = 0
 	}
 
 	for i := 0; i < len(g.Snake); i++ {
-		g.Snake[i].X = Lerp(g.Snake[i].X, g.Snake[i].Next_X, 0.18)
-		g.Snake[i].Y = Lerp(g.Snake[i].Y, g.Snake[i].Next_Y, 0.18)
+		time := float32(1.0)
+		if i == 0 {
+			time = 0.4
+		}
+		g.Snake[i].Position.X = Lerp(g.Snake[i].Position.X, g.Snake[i].NextPosition.X, time)
+		g.Snake[i].Position.Y = Lerp(g.Snake[i].Position.Y, g.Snake[i].NextPosition.Y, time)
 	}
 
-	if int32(g.Snake[0].Next_X-16) == int32(g.Fruit.X) && int32(g.Snake[0].Next_Y-16) == int32(g.Fruit.Y) {
-		g.Fruit.X = float32(rand.Int31n(25)) * 32
-		g.Fruit.Y = float32(rand.Int31n(19)) * 32
-		g.Snake = append(g.Snake, Snake{g.Snake[len(g.Snake)-1].X, g.Snake[len(g.Snake)-1].Y, g.Snake[len(g.Snake)-1].Next_X, g.Snake[len(g.Snake)-1].Next_Y, 0, 0, 16})
+	if int32(g.Snake[0].NextPosition.X-16) == int32(g.Fruit.Position.X) && int32(g.Snake[0].NextPosition.Y-16) == int32(g.Fruit.Position.Y) {
+		g.Fruit.Position.X = float32(rand.Int31n(25)) * TileSize
+		g.Fruit.Position.X = float32(rand.Int31n(19)) * TileSize
+		g.Snake = append(g.Snake, SnakePart{NewVector2(g.Snake[len(g.Snake)-1].Position.X, g.Snake[len(g.Snake)-1].Position.Y), NewVector2(g.Snake[len(g.Snake)-1].NextPosition.X, g.Snake[len(g.Snake)-1].NextPosition.Y), NewVector2(0, 0), 16})
 	}
 
 	g.FramesCouter++
@@ -119,16 +144,17 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 	for i := 0; i < len(g.Snake); i++ {
-		if i == 0 {
-			vector.DrawFilledCircle(screen, g.Snake[i].X, g.Snake[i].Y, g.Snake[i].Scale, color.RGBA{255, 255, 255, 255}, true)
-			continue
+		if i != 0 {
+			vector.StrokeLine(screen, g.Snake[i].Position.X, g.Snake[i].Position.Y, g.Snake[i-1].Position.X, g.Snake[i-1].Position.Y, 32, color.White, true)
 		}
-		vector.DrawFilledCircle(screen, g.Snake[i].X, g.Snake[i].Y, g.Snake[i].Scale, color.RGBA{225 - uint8(i*5), 225 - uint8(i*5), 225 - uint8(i*5), 255}, true)
+		vector.DrawFilledCircle(screen, g.Snake[i].Position.X, g.Snake[i].Position.Y, g.Snake[i].Scale, color.White, true)
 	}
 
-	vector.DrawFilledRect(screen, g.Fruit.X, g.Fruit.Y, g.Fruit.Scale, g.Fruit.Scale, color.RGBA{255, 0, 0, 255}, false)
+	vector.DrawFilledRect(screen, g.Fruit.Position.X, g.Fruit.Position.Y, g.Fruit.Scale, g.Fruit.Scale, color.RGBA{255, 0, 0, 255}, false)
 
 	//test
+
+	//end
 
 	msg := fmt.Sprintf(`FPS: %0.2f, TPS: %0.2f`, ebiten.ActualFPS(), ebiten.ActualTPS())
 	ebitenutil.DebugPrint(screen, msg)
