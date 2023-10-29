@@ -23,3 +23,7 @@ func (i *Input) MoveUp() bool {
 func (i *Input) MoveDown() bool {
 	return inpututil.IsKeyJustPressed(ebiten.KeyDown)
 }
+
+func (i *Input) Space() bool {
+	return inpututil.IsKeyJustPressed(ebiten.KeySpace)
+}

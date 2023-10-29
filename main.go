@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"log"
+	// "math"
 	"math/rand"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -49,6 +50,14 @@ type Game struct {
 	Fruit          Fruit
 	Input          *Input
 	MovementBuffer []Vector2
+
+	MoveTime int32
+	Time     float32
+
+	aa       bool
+	counter  int
+	vertices []ebiten.Vertex
+	indices  []uint16
 }
 
 func NewGame() ebiten.Game {
@@ -64,12 +73,16 @@ func NewVector2(x, y float32) Vector2 {
 func (g *Game) Init() {
 	g.FramesCouter = 0
 
-	g.Snake = []SnakePart{{Position: NewVector2(16, 16), NextPosition: NewVector2(32-16, 32-16), Direction: NewVector2(0, 0), Scale: TileSize / 2},
+	g.Snake = []SnakePart{{Position: NewVector2(16, 16), NextPosition: NewVector2(128-16, 128-16), Direction: NewVector2(0, 0), Scale: TileSize / 2},
 		{Position: NewVector2(16, 16), NextPosition: NewVector2(16, 16), Direction: NewVector2(0, 0), Scale: TileSize / 2},
 		{Position: NewVector2(16, 16), NextPosition: NewVector2(16, 16), Direction: NewVector2(0, 0), Scale: TileSize / 2},
 		{Position: NewVector2(16, 16), NextPosition: NewVector2(16, 16), Direction: NewVector2(0, 0), Scale: TileSize / 2},
 	}
 	g.Fruit = Fruit{Position: NewVector2(256, 256), Scale: TileSize}
+
+	g.MoveTime = 8
+	whiteImage.Fill(color.White)
+
 }
 
 func (g *Game) MoveSnake() {
@@ -99,14 +112,15 @@ func (g *Game) Update() error {
 		g.MovementBuffer = append(g.MovementBuffer, g.Snake[0].Direction)
 	}
 
-	if g.FramesCouter%8 == 0 {
+	// Time to Move!
+	if g.FramesCouter%g.MoveTime == 0 {
 		g.MoveSnake()
 		if len(g.MovementBuffer) > 0 {
 			if len(g.MovementBuffer) > 1 {
 				g.MovementBuffer = g.MovementBuffer[1:]
 			}
-			if len(g.MovementBuffer) > 4 {
-				g.MovementBuffer = g.MovementBuffer[1:4]
+			if len(g.MovementBuffer) > 5 {
+				g.MovementBuffer = g.MovementBuffer[1:5]
 			}
 			g.Snake[0].NextPosition.X += g.MovementBuffer[0].X
 			g.Snake[0].NextPosition.Y += g.MovementBuffer[0].Y
@@ -114,19 +128,26 @@ func (g *Game) Update() error {
 		g.FramesCouter = 0
 	}
 
+	//Lerp
 	for i := 0; i < len(g.Snake); i++ {
-		time := float32(1.0)
-		if i == 0 {
-			time = 0.4
+		g.Time = 1
+		if i == 0 || i == len(g.Snake)-1 {
+			g.Time = 0.3
 		}
-		g.Snake[i].Position.X = Lerp(g.Snake[i].Position.X, g.Snake[i].NextPosition.X, time)
-		g.Snake[i].Position.Y = Lerp(g.Snake[i].Position.Y, g.Snake[i].NextPosition.Y, time)
+		if i == len(g.Snake)-1 {
+			g.Snake[i].Position.X = Lerp(g.Snake[i].Position.X, g.Snake[i-1].Position.X, g.Time)
+			g.Snake[i].Position.Y = Lerp(g.Snake[i].Position.Y, g.Snake[i-1].Position.Y, g.Time)
+			continue
+		}
+		g.Snake[i].Position.X = Lerp(g.Snake[i].Position.X, g.Snake[i].NextPosition.X, g.Time)
+		g.Snake[i].Position.Y = Lerp(g.Snake[i].Position.Y, g.Snake[i].NextPosition.Y, g.Time)
+
 	}
 
 	if int32(g.Snake[0].NextPosition.X-16) == int32(g.Fruit.Position.X) && int32(g.Snake[0].NextPosition.Y-16) == int32(g.Fruit.Position.Y) {
 		g.Fruit.Position.X = float32(rand.Int31n(25)) * TileSize
-		g.Fruit.Position.X = float32(rand.Int31n(19)) * TileSize
-		g.Snake = append(g.Snake, SnakePart{NewVector2(g.Snake[len(g.Snake)-1].Position.X, g.Snake[len(g.Snake)-1].Position.Y), NewVector2(g.Snake[len(g.Snake)-1].NextPosition.X, g.Snake[len(g.Snake)-1].NextPosition.Y), NewVector2(0, 0), 16})
+		g.Fruit.Position.Y = float32(rand.Int31n(19)) * TileSize
+		g.Snake = append(g.Snake, SnakePart{NewVector2(g.Snake[len(g.Snake)-1].NextPosition.X, g.Snake[len(g.Snake)-1].NextPosition.Y), NewVector2(g.Snake[len(g.Snake)-1].NextPosition.X, g.Snake[len(g.Snake)-1].NextPosition.Y), NewVector2(0, 0), 16})
 	}
 
 	g.FramesCouter++
@@ -145,9 +166,10 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 	for i := 0; i < len(g.Snake); i++ {
 		if i != 0 {
-			vector.StrokeLine(screen, g.Snake[i].Position.X, g.Snake[i].Position.Y, g.Snake[i-1].Position.X, g.Snake[i-1].Position.Y, 32, color.White, true)
+			// vector.StrokeLine(screen, g.Snake[i].Position.X, g.Snake[i].Position.Y, g.Snake[i-1].Position.X, g.Snake[i-1].Position.Y, 32, color.White, true)
+			g.drawLine(screen, NewVector2(g.Snake[i].Position.X, g.Snake[i].Position.Y), NewVector2(g.Snake[i-1].Position.X, g.Snake[i-1].Position.Y))
 		}
-		vector.DrawFilledCircle(screen, g.Snake[i].Position.X, g.Snake[i].Position.Y, g.Snake[i].Scale, color.White, true)
+		// vector.DrawFilledCircle(screen, g.Snake[i].Position.X, g.Snake[i].Position.Y, g.Snake[i].Scale, color.White, true)
 	}
 
 	vector.DrawFilledRect(screen, g.Fruit.Position.X, g.Fruit.Position.Y, g.Fruit.Scale, g.Fruit.Scale, color.RGBA{255, 0, 0, 255}, false)
@@ -159,6 +181,29 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	msg := fmt.Sprintf(`FPS: %0.2f, TPS: %0.2f`, ebiten.ActualFPS(), ebiten.ActualTPS())
 	ebitenutil.DebugPrint(screen, msg)
 
+}
+
+func (g *Game) drawLine(screen *ebiten.Image, current Vector2, next Vector2) {
+	var path vector.Path
+	path.LineTo(current.X, current.Y)
+	path.LineTo(next.X, next.Y)
+
+	// Draw the main line in white.
+	op := &vector.StrokeOptions{LineCap: vector.LineCapRound, LineJoin: vector.LineJoinRound, MiterLimit: 0, Width: 32}
+	vs, is := path.AppendVerticesAndIndicesForStroke(g.vertices[:0], g.indices[:0], op)
+	for i := range vs {
+		vs[i].SrcX = 1
+		vs[i].SrcY = 1
+		vs[i].ColorR = 1
+		vs[i].ColorG = 1
+		vs[i].ColorB = 1
+		vs[i].ColorA = 1
+	}
+	screen.DrawTriangles(vs, is, whiteSubImage, &ebiten.DrawTrianglesOptions{
+		AntiAlias: true,
+	})
+
+	// Draw the center line in red.
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
