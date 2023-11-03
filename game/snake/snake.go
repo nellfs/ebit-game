@@ -93,6 +93,14 @@ func (s *Snake) drawLine(screen *ebiten.Image, current common.Vector2, next comm
 
 	options := &vector.StrokeOptions{LineCap: vector.LineCapRound, LineJoin: vector.LineJoinRound, MiterLimit: 0, Width: 32}
 	vs, is := path.AppendVerticesAndIndicesForStroke(nil, nil, options)
+	for i := range vs {
+		vs[i].SrcX = 1
+		vs[i].SrcY = 1
+		vs[i].ColorR = 0xffffff
+		vs[i].ColorG = 0xffffff
+		vs[i].ColorB = 0xffffff
+		vs[i].ColorA = 1
+	}
 
 	screen.DrawTriangles(vs, is, screen, &ebiten.DrawTrianglesOptions{
 		AntiAlias: true,
